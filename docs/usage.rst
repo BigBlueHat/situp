@@ -79,14 +79,14 @@ Pushing to a (set of) servers
 ----------------------------------------
 Pushing an application to a server is as simple as running::
 
-	situp.py push -s http://localhost:5984 -d databasename
+	situp.py push -s http://localhost:5984 -e databasename
 
 The -s option can be specified multiple times.
 
 If a server has been defined (see above) you can refer to it via it's short
 name::
 
-	situp.py push -s dev -d databasename
+	situp.py push -s dev -e databasename
 
 If a server URL has a username in it (e.g. joe@localhost:5984) ``situp.py``
 will ask for a password. This won't be stored anywhere and will not be in the
