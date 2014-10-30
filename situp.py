@@ -423,7 +423,7 @@ class Push(Command):
             return a_dict
 
         attachments = {}
-        app = {'_id': name}
+        app = {'_id': '_design/%s' % name}
         for root, dirs, files in os.walk(design):
             path = root.split(name)[1].split('/')[1:]
             dirs = filter(self._allowed_file, dirs)
@@ -536,9 +536,8 @@ class Push(Command):
 
                 if len(options.design) > 1:
                     list_of_designs = [options.design[1]]
-                for design in filter(self._allowed_file, list_of_designs):
-                    name = os.path.join('_design', design)
-                    root = os.path.join(designs, design)
+                for name in filter(self._allowed_file, list_of_designs):
+                    root = os.path.join(designs, name)
                     app = self._walk_design(name, root, options)
                     apps_to_push.append(app)
 
