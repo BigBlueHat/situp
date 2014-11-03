@@ -394,6 +394,8 @@ class Push(Command):
             data = base64.encodestring(f.read())
             f.close()
 
+        if os.path.sep in afile:
+            afile = '/'.join(afile.split(os.path.sep))
         return {afile: {
                 'data': data,
                 'content_type': mime
@@ -425,7 +427,8 @@ class Push(Command):
         attachments = {}
         app = {'_id': '_design/%s' % name}
         for root, dirs, files in os.walk(design):
-            path = root.split(name)[1].split('/')[1:]
+            path = root.split(os.path.join('_design', name))[1]\
+                    .split(os.path.sep)[1:]
             dirs = filter(self._allowed_file, dirs)
             if files:
                 d = {}
