@@ -272,6 +272,9 @@ class Push(Command):
                 help="Push the app to servers (multiple -s options allowed)")
         group.add_option('-e', '--database', dest='database',
                 help="Push the app to named database")
+        group.add_option('-o', '--docs',
+                dest='only_docs', default=False, action="store_true",
+                help="Push only the _docs directory")
 
         if CAN_PREPROC:
             proc_l = lambda x: not x.startswith('_')
@@ -675,16 +678,17 @@ class Push(Command):
                     servers_to_use[server]["auth"] = auth
 
         if len(servers_to_use.keys()) > 0:
-            if os.path.exists(designs):
-                list_of_designs = os.listdir(designs)
+            if options.only_docs == False:
+                if os.path.exists(designs):
+                    list_of_designs = os.listdir(designs)
 
-                if len(options.design) > 1:
-                    list_of_designs = [options.design[1]]
-                for design in filter(self._allowed_file, list_of_designs):
-                    name = os.path.join('_design', design)
-                    root = os.path.join(designs, design)
-                    app = self._walk_design(name, root, options)
-                    apps_to_push.append(app)
+                    if len(options.design) > 1:
+                        list_of_designs = [options.design[1]]
+                    for design in filter(self._allowed_file, list_of_designs):
+                        name = os.path.join('_design', design)
+                        root = os.path.join(designs, design)
+                        app = self._walk_design(name, root, options)
+                        apps_to_push.append(app)
 
             self._push_docs(apps_to_push, options.database, servers_to_use)
 
