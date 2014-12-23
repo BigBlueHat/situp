@@ -582,6 +582,15 @@ class Push(Command):
                 # files starting with "_" are always "special"
                 continue
             elif name == '_attachments':
+                fields['_attachments'] = {}
+                for root, dirs, files in os.walk(current_path):
+                    for f in filter(self._allowed_file, files):
+                        att_name = _replace_backslash(os.path.relpath(root, current_path))
+                        if att_name == '.':
+                            att_name = f
+                        else:
+                            att_name += '/' + f
+                        fields['_attachments'][att_name] = self._attach(f, os.path.join(root, f))[f]
                 continue
             elif depth == 0 and (name == 'couchapp' or
                                  name == 'couchapp.json'):
@@ -637,9 +646,10 @@ class Push(Command):
                         except UnicodeError:
                             self.logger.warning("plan B didn't work, %s is a binary"
                                            % current_path)
-                            self.logger.warning("use plan C: encode to base64")
-                            content = "base64-encoded;%s" % \
-                                base64.b64encode(content)
+                            self.logger.warning("Move %s into _attachments" % current_path)
+                            #self.logger.warning("use plan C: encode to base64")
+                            #content = "base64-encoded;%s" % \
+                            #    base64.b64encode(content)
 
                 # remove extension
                 name, ext = os.path.splitext(name)
