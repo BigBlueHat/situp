@@ -404,7 +404,7 @@ class Push(Command):
         if minify and mime == "application/javascript":
             data = self._minify(file_path)
         else:
-            f = open(os.path.join(file_path))
+            f = open(os.path.join(file_path), 'rb')
             data = base64.b64encode(f.read())
             f.close()
 
