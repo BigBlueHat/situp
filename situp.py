@@ -1,9 +1,11 @@
 #! /usr/bin/env python
 import base64
+import codecs
 import json
 import os
 import sys
 import stat
+import string
 import logging
 import urllib
 import urllib2
@@ -44,6 +46,13 @@ except:
     pass
 
 __version__ = "0.2.1"
+
+if os.name == 'nt':
+    def _replace_backslash(name):
+        return name.replace("\\", "/")
+else:
+    def _replace_backslash(name):
+        return name
 
 
 class CommandDispatch:
@@ -503,6 +512,141 @@ class Push(Command):
             auth = base64.encodestring('%s:%s' % auth_tuple).strip()
             return url, "%s" % auth
 
+    # cribbed from couchapp.py
+    def read(self, fname, utf8=True, force_read=False):
+        """ read file content"""
+        if utf8:
+            try:
+                with codecs.open(fname, 'rb', "utf-8") as f:
+                    return f.read()
+            except UnicodeError:
+                if force_read:
+                    return read(fname, utf8=False)
+                raise
+        else:
+            with open(fname, 'rb') as f:
+                return f.read()
+
+    # cribbed from couchapp.py
+    def read_json(self, fname, use_environment=False, raise_on_error=False):
+        """ read a json file and deserialize
+
+        :attr filename: string
+        :attr use_environment: boolean, default is False. If
+        True, replace environment variable by their value in file
+        content
+
+        :return: dict or list
+        """
+        try:
+            data = self.read(fname, force_read=True)
+        except IOError, e:
+            if e[0] == 2:
+                return {}
+            raise
+
+        if use_environment:
+            data = string.Template(data).substitute(os.environ)
+
+        try:
+            data = json.loads(data)
+        except ValueError:
+            logger.error("Json is invalid, can't load %s" % fname)
+            if not raise_on_error:
+                return {}
+            raise
+        return data
+
+    # cribbed from couchapp.py
+    def dir_to_fields(self, current_dir='', depth=0, manifest=[]):
+        """ process a directory and get all members """
+
+        fields = {}
+        if not current_dir:
+            current_dir = self.docdir
+        for name in os.listdir(current_dir):
+            current_path = os.path.join(current_dir, name)
+            rel_path = _replace_backslash(os.path.relpath(current_path,
+                                                       self.docdir))
+            if name.startswith("."):
+                continue
+            # TODO: bring in .couchappignore support
+            #elif self.check_ignore(name):
+            #    continue
+            elif depth == 0 and name.startswith('_'):
+                # files starting with "_" are always "special"
+                continue
+            elif name == '_attachments':
+                continue
+            elif depth == 0 and (name == 'couchapp' or
+                                 name == 'couchapp.json'):
+                # we are in app_meta
+                if name == "couchapp":
+                    manifest.append('%s/' % rel_path)
+                    content = self.dir_to_fields(current_path,
+                                                 depth=depth+1,
+                                                 manifest=manifest)
+                else:
+                    manifest.append(rel_path)
+                    content = self.read_json(current_path)
+                    if not isinstance(content, dict):
+                        content = {"meta": content}
+                if 'signatures' in content:
+                    del content['signatures']
+
+                if 'manifest' in content:
+                    del content['manifest']
+
+                if 'objects' in content:
+                    del content['objects']
+
+                if 'length' in content:
+                    del content['length']
+
+                if 'couchapp' in fields:
+                    fields['couchapp'].update(content)
+                else:
+                    fields['couchapp'] = content
+            elif os.path.isdir(current_path):
+                manifest.append('%s/' % rel_path)
+                fields[name] = self.dir_to_fields(current_path, depth=depth+1,
+                                                  manifest=manifest)
+            else:
+                self.logger.debug("push %s" % rel_path)
+
+                content = ''
+                if name.endswith('.json'):
+                    try:
+                        content = self.read_json(current_path)
+                    except ValueError:
+                        self.logger.error("Json invalid in %s" % current_path)
+                else:
+                    try:
+                        content = self.read(current_path).strip()
+                    except UnicodeDecodeError:
+                        self.logger.warning("%s isn't encoded in utf8" %
+                                       current_path)
+                        content = self.read(current_path, utf8=False)
+                        try:
+                            content.encode('utf-8')
+                        except UnicodeError:
+                            self.logger.warning("plan B didn't work, %s is a binary"
+                                           % current_path)
+                            self.logger.warning("use plan C: encode to base64")
+                            content = "base64-encoded;%s" % \
+                                base64.b64encode(content)
+
+                # remove extension
+                name, ext = os.path.splitext(name)
+                if name in fields:
+                    self.logger.warning("%(name)s is already in properties. " +
+                                   "Can't add (%(fqn)s)" % {"name": name,
+                                                            "fqn": rel_path})
+                else:
+                    manifest.append(rel_path)
+                    fields[name] = content
+        return fields
+
     def run_command(self, args, options):
         """
         Build a python dictionary of the application, jsonise it and push it to
@@ -545,29 +689,11 @@ class Push(Command):
             self._push_docs(apps_to_push, options.database, servers_to_use)
 
             if os.path.exists(docs):
-                docs_to_push = defaultdict(dict)
-                l_dir = os.listdir(docs)
-                for file in filter(self._allowed_file, l_dir):
-                    file_path = os.path.join(docs, file)
-
-                    if file.endswith('.json'):
-                        # do something to check it's json
-                        try:
-                            f = open(file_path)
-                            docs_to_push[file].update(json.load(f))
-                            f.close()
-                        except:
-                            self.logger.info('could not read %s' % file)
-                    elif os.path.isdir(file_path) and \
-                                              '%s.json' % file in l_dir:
-                    # Assume directory contents are attachments
-                        attachments = os.listdir(file_path)
-                        key = '%s.json' % file
-                        att = {}
-                        for a in filter(self._allowed_file, attachments):
-                            fp = os.path.join(file_path, a)
-                            att.update(self._attach(a, fp, options.minify))
-                        docs_to_push[key].update({'_attachments': att})
+                self.docdir = docs
+                docs_to_push = self.dir_to_fields(docs)
+                for key in docs_to_push:
+                    if '_id' not in docs_to_push[key]:
+                        docs_to_push[key]['_id'] = key
                 self._push_docs(docs_to_push.values(), options.database,
                         servers_to_use)
         else:
