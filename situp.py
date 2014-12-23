@@ -2,6 +2,7 @@
 import base64
 import json
 import os
+import re
 import sys
 import stat
 import logging
@@ -11,7 +12,7 @@ import tarfile
 import zipfile
 import shutil
 import uuid
-from mimetypes import guess_type as guess_mime_type
+import mimetypes
 import getpass
 from optparse import OptionParser, OptionGroup
 from collections import defaultdict, namedtuple
@@ -380,7 +381,8 @@ class Push(Command):
         mime type (assumes text/plain if it can't be determined) and returns
         the necessary dict to upload to a doc.
         """
-        mime = guess_mime_type(file_path)[0]
+        mimetypes.init(files=[])
+        mime = mimetypes.guess_type(file_path)[0]
 
         if not mime:
             msg = 'Assuming text/plain mime type for %s'
@@ -391,7 +393,7 @@ class Push(Command):
             data = self._minify(file_path)
         else:
             f = open(os.path.join(file_path))
-            data = base64.encodestring(f.read())
+            data = base64.b64encode(f.read())
             f.close()
 
         if os.path.sep in afile:
